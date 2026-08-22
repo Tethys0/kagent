@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/openai/openai-go/v3"
@@ -356,6 +357,46 @@ func TestGenaiContentsToOpenAIMessages_PreservesThoughtSignatureOnToolCallAndToo
 
 	assertThoughtSignature("assistant tool_call", firstToolCallJSON)
 	assertThoughtSignature("tool message", toolJSON)
+}
+
+func TestGenaiContentsToOpenAIMessages_PreservesMCPResourceContent(t *testing.T) {
+	functionCall := genai.NewPartFromFunctionCall("get_file_contents", map[string]any{"path": "main.go"})
+	functionCall.FunctionCall.ID = "call_file"
+	functionResponse := genai.NewPartFromFunctionResponse("get_file_contents", map[string]any{
+		"content": []any{
+			map[string]any{"type": "text", "text": "successfully downloaded text file (SHA: abc123)"},
+			map[string]any{
+				"type": "resource",
+				"resource": map[string]any{
+					"mimeType": "text/plain; charset=utf-8",
+					"text":     "package main\n\nfunc main() {}",
+				},
+			},
+		},
+	})
+	functionResponse.FunctionResponse.ID = "call_file"
+
+	messages, _ := genaiContentsToOpenAIMessages([]*genai.Content{
+		{Role: string(genai.RoleModel), Parts: []*genai.Part{functionCall}},
+		{Role: string(genai.RoleUser), Parts: []*genai.Part{functionResponse}},
+	}, nil)
+	if len(messages) != 2 {
+		t.Fatalf("len(messages) = %d, want 2", len(messages))
+	}
+
+	toolJSON, err := json.Marshal(messages[1].OfTool)
+	if err != nil {
+		t.Fatalf("json.Marshal(tool) error = %v", err)
+	}
+	for _, want := range []string{
+		"successfully downloaded text file (SHA: abc123)",
+		"package main",
+		"func main() {}",
+	} {
+		if !strings.Contains(string(toolJSON), want) {
+			t.Errorf("tool message %q missing %q", string(toolJSON), want)
+		}
+	}
 }
 
 func TestChatCompletionToLLMResponse_PreservesThoughtSignature(t *testing.T) {

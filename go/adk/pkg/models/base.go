@@ -135,7 +135,7 @@ func parametersJsonSchemaToMap(v any) map[string]any {
 
 // extractFunctionResponseContent converts a tool/function response value to a plain string:
 //   - string: returned as-is
-//   - map with "content" []any: all text items joined by newline (e.g. MCP tool responses)
+//   - map with "content" []any: all content items joined by newline (e.g. MCP tool responses)
 //   - map with "result" string: returned directly
 //   - anything else: JSON-marshalled
 func extractFunctionResponseContent(resp any) string {
@@ -153,6 +153,10 @@ func extractFunctionResponseContent(resp any) string {
 				if itemMap, ok := item.(map[string]any); ok {
 					if t, ok := itemMap["text"].(string); ok {
 						parts = append(parts, t)
+						continue
+					}
+					if b, err := json.Marshal(itemMap); err == nil {
+						parts = append(parts, string(b))
 					}
 				}
 			}
